@@ -64,6 +64,35 @@ const loginLimiter = rateLimit({
 });
 
 const allowedMimeTypes = new Set(["video/mp4", "video/webm", "video/quicktime"]);
+const demoVideos = [
+  {
+    id: "demo-neon-after-hours",
+    title: "Neon After Hours",
+    description: "A demo listing showing how a published title appears in the hub.",
+    category: "Featured",
+    duration: "Demo",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    demo: true
+  },
+  {
+    id: "demo-red-room-sessions",
+    title: "Red Room Sessions",
+    description: "A visual placeholder for your next creator upload.",
+    category: "Originals",
+    duration: "Demo",
+    createdAt: "2026-01-02T00:00:00.000Z",
+    demo: true
+  },
+  {
+    id: "demo-late-night-original",
+    title: "Late Night Original",
+    description: "Replace demo listings with content you have the rights to publish.",
+    category: "New",
+    duration: "Demo",
+    createdAt: "2026-01-03T00:00:00.000Z",
+    demo: true
+  }
+];
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, uploadDir),
   filename: (_req, file, cb) => {
@@ -163,7 +192,8 @@ app.get("/api/config", (_req, res) => {
 });
 
 app.get("/api/videos", requireAge, (_req, res) => {
-  res.json({ videos: readVideos().map(publicVideo) });
+  const videos = readVideos();
+  res.json({ videos: (videos.length ? videos : demoVideos).map(publicVideo) });
 });
 
 app.post("/api/admin/login", loginLimiter, (req, res) => {
