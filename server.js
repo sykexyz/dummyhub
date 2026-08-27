@@ -232,9 +232,15 @@ app.get("/media/:id", requireAge, (req, res) => {
 });
 
 app.get("/", (_req, res) => {
-  res.sendFile(path.join(publicDir, "site.txt"), {
-    headers: { "Content-Type": "text/html; charset=utf-8" }
-  });
+  const shell = [
+    "<!doctype html><html><head><meta charset=\"UTF-8\">",
+    "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">",
+    "<title>DUMMY HUB</title><link rel=\"stylesheet\" href=\"/styles.css\">",
+    "</head><body><div class=\"ambient ambient-one\"></div>",
+    "<div class=\"ambient ambient-two\"></div><div id=\"app\"></div>",
+    "<", "script src=\"/app.js\" defer>", "</", "script></body></html>"
+  ].join("");
+  res.type("html").send(shell);
 });
 
 app.use(express.static(publicDir, { extensions: ["html"] }));
