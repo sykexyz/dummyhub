@@ -9,7 +9,7 @@ document.getElementById("app").innerHTML = `
         <button id="enter-button" class="button button-primary" type="button">I’m 18+ · Enter</button>
         <button id="exit-button" class="button button-quiet" type="button">I’m under 18 · Exit</button>
       </div>
-      <p class="fine-print">By entering, you confirm your age and agree to use this site lawfully.</p>
+      <p class="fine-print">No ID is requested. Tap the button only if you are 18+ (or the age of majority where you live).</p>
       <div id="gate-message" class="notice hidden" role="status"></div>
     </div>
   </section>
@@ -141,8 +141,114 @@ function renderVideoCard(video, index) {
     <h3 class="video-title">${escapeHtml(video.title)}</h3>
     <p class="video-description">${escapeHtml(video.description || "A new upload from the DUMMY HUB studio.")}</p>
     <div class="video-details"><span>${escapeHtml(video.category || "Featured")}</span><span>${escapeHtml(video.duration || "18+ access")}</span></div>
+    <div class="video-actions">
+      <button class="action-button like-button ${video.liked ? "liked" : ""}" type="button" aria-pressed="${Boolean(video.liked)}">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20.8 8.7c0 5.1-8.8 10-8.8 10s-8.8-4.9-8.8-10A4.7 4.7 0 0 1 12 6.1a4.7 4.7 0 0 1 8.8 2.6Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
+        <span>Like</span><b>${Number(video.likeCount || 0)}</b>
+      </button>
+      <button class="action-button comments-toggle" type="button" aria-expanded="false">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 5.5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-8l-4.5 3v-3H5a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+        <span>Comments</span><b>${Number(video.commentCount || 0)}</b>
+      </button>
+    </div>
+    <div class="comments-panel hidden">
+      <div class="comments-header"><span>Visitor comments</span><small>No login or ID required</small></div>
+      <div class="comment-list"><p class="comment-empty">Open comments to load the conversation.</p></div>
+      <form class="comment-form">
+        <input name="username" maxlength="32" placeholder="Your username" autocomplete="nickname" required />
+        <textarea name="text" maxlength="500" rows="2" placeholder="Write a comment..." required></textarea>
+        <button class="button button-primary button-small" type="submit">Post comment</button>
+      </form>
+      <div class="comment-message notice hidden" role="status"></div>
+    </div>
   `;
+  const likeButton = card.querySelector(".like-button");
+  const commentsToggle = card.querySelector(".comments-toggle");
+  const commentsPanel = card.querySelector(".comments-panel");
+
+  likeButton.addEventListener("click", async () => {
+    const nextLiked = !video.liked;
+    video.liked = nextLiked;
+    video.likeCount = Math.max(0, Number(video.likeCount || 0) + (nextLiked ? 1 : -1));
+    updateLikeButton(likeButton, video);
+    try {
+      const response = await fetch(`/api/videos/${encodeURIComponent(video.id)}/like`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ liked: nextLiked })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Like failed.");
+      video.liked = data.liked;
+      video.likeCount = data.likeCount;
+      updateLikeButton(likeButton, video);
+    } catch (error) {
+      video.liked = !nextLiked;
+      video.likeCount = Math.max(0, Number(video.likeCount || 0) + (nextLiked ? -1 : 1));
+      updateLikeButton(likeButton, video);
+    }
+  });
+
+  commentsToggle.addEventListener("click", async () => {
+    const isOpen = !commentsPanel.classList.contains("hidden");
+    commentsPanel.classList.toggle("hidden", isOpen);
+    commentsToggle.setAttribute("aria-expanded", String(!isOpen));
+    if (!isOpen && !commentsPanel.dataset.loaded) await loadComments(video, commentsPanel);
+  });
+
+  card.querySelector(".comment-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const button = form.querySelector("button[type=submit]");
+    button.disabled = true;
+    const response = await fetch(`/api/videos/${encodeURIComponent(video.id)}/comments`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(Object.fromEntries(new FormData(form)))
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      showNotice(card.querySelector(".comment-message"), data.error || "Comment failed.");
+    } else {
+      form.reset();
+      video.commentCount = Number(video.commentCount || 0) + 1;
+      commentsToggle.querySelector("b").textContent = video.commentCount;
+      await loadComments(video, commentsPanel);
+      showNotice(card.querySelector(".comment-message"), "Comment posted.", "success");
+    }
+    button.disabled = false;
+  });
   return card;
+}
+
+function updateLikeButton(button, video) {
+  button.classList.toggle("liked", Boolean(video.liked));
+  button.setAttribute("aria-pressed", String(Boolean(video.liked)));
+  button.querySelector("b").textContent = Number(video.likeCount || 0);
+}
+
+async function loadComments(video, panel) {
+  const response = await fetch(`/api/videos/${encodeURIComponent(video.id)}/comments`);
+  const data = await response.json();
+  if (!response.ok) return showNotice(panel.querySelector(".comment-message"), data.error || "Comments could not be loaded.");
+  const list = panel.querySelector(".comment-list");
+  list.innerHTML = "";
+  if (!data.comments.length) {
+    list.innerHTML = `<p class="comment-empty">No comments yet. Start the conversation.</p>`;
+  } else {
+    data.comments.forEach((comment) => {
+      const item = document.createElement("div");
+      item.className = "comment-item";
+      item.innerHTML = `<strong>${escapeHtml(comment.username)}</strong><p>${escapeHtml(comment.text)}</p><small>${formatCommentDate(comment.createdAt)}</small>`;
+      list.appendChild(item);
+    });
+  }
+  panel.dataset.loaded = "true";
+}
+
+function formatCommentDate(value) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "Just now" : date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 function escapeHtml(value) {
