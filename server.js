@@ -16,10 +16,14 @@ const publicDir = path.join(__dirname, "public");
 const dataDir = path.join(__dirname, "data");
 const uploadDir = path.join(__dirname, "uploads");
 const videoIndexPath = path.join(dataDir, "videos.json");
+const likesPath = path.join(dataDir, "likes.json");
+const commentsPath = path.join(dataDir, "comments.json");
 
 fs.mkdirSync(dataDir, { recursive: true });
 fs.mkdirSync(uploadDir, { recursive: true });
 if (!fs.existsSync(videoIndexPath)) fs.writeFileSync(videoIndexPath, "[]");
+if (!fs.existsSync(likesPath)) fs.writeFileSync(likesPath, "{}");
+if (!fs.existsSync(commentsPath)) fs.writeFileSync(commentsPath, "{}");
 
 app.disable("x-powered-by");
 app.set("trust proxy", 1);
@@ -63,6 +67,20 @@ const loginLimiter = rateLimit({
   standardHeaders: "draft-8",
   legacyHeaders: false,
   message: { error: "Too many login attempts. Try again later." }
+});
+const likeLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 60,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: { error: "Too many reactions. Slow down for a moment." }
+});
+const commentLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  limit: 12,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: { error: "Too many comments. Please wait a little before posting again." }
 });
 
 const allowedMimeTypes = new Set(["video/mp4", "video/webm", "video/quicktime"]);
@@ -127,7 +145,23 @@ function writeVideos(videos) {
   fs.renameSync(temporaryPath, videoIndexPath);
 }
 
-function publicVideo(video) {
+function readStore(storePath, fallback) {
+  try {
+    return JSON.parse(fs.readFileSync(storePath, "utf8"));
+  } catch {
+    return fallback;
+  }
+}
+
+function writeStore(storePath, value) {
+  const temporaryPath = `${storePath}.tmp`;
+  fs.writeFileSync(temporaryPath, JSON.stringify(value, null, 2));
+  fs.renameSync(temporaryPath, storePath);
+}
+
+function publicVideo(video, visitorId, likes, comments) {
+  const likeBucket = likes[video.id] || {};
+  const commentList = comments[video.id] || [];
   return {
     id: video.id,
     title: video.title,
@@ -136,7 +170,10 @@ function publicVideo(video) {
     duration: video.duration || "—",
     createdAt: video.createdAt,
     demo: Boolean(video.demo),
-    url: video.fileName ? `/media/${encodeURIComponent(video.id)}` : null
+    url: video.fileName ? `/media/${encodeURIComponent(video.id)}` : null,
+    likeCount: Object.keys(likeBucket).length,
+    liked: Boolean(visitorId && likeBucket[visitorId]),
+    commentCount: commentList.length
   };
 }
 
@@ -144,6 +181,23 @@ function readCookie(req, name) {
   const cookieHeader = req.headers.cookie || "";
   const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${name}=([^;]*)`));
   return match ? decodeURIComponent(match[1]) : null;
+}
+
+function getVisitorId(req, res) {
+  const existingId = readCookie(req, "visitor_id");
+  if (existingId) return existingId;
+  const visitorId = crypto.randomBytes(18).toString("hex");
+  res.cookie("visitor_id", visitorId, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: isProduction,
+    maxAge: 1000 * 60 * 60 * 24 * 180
+  });
+  return visitorId;
+}
+
+function getVideo(videoId) {
+  return [...demoVideos, ...readVideos()].find((video) => video.id === videoId);
 }
 
 function isAgeVerified(req) {
@@ -194,8 +248,56 @@ app.get("/api/config", (_req, res) => {
 });
 
 app.get("/api/videos", requireAge, (_req, res) => {
+  const visitorId = getVisitorId(_req, res);
   const videos = readVideos();
-  res.json({ videos: (videos.length ? videos : demoVideos).map(publicVideo) });
+  const visibleVideos = videos.length ? videos : demoVideos;
+  const likes = readStore(likesPath, {});
+  const comments = readStore(commentsPath, {});
+  res.json({ videos: visibleVideos.map((video) => publicVideo(video, visitorId, likes, comments)) });
+});
+
+app.get("/api/videos/:id/comments", requireAge, (req, res) => {
+  if (!getVideo(req.params.id)) return res.status(404).json({ error: "Video not found." });
+  const comments = readStore(commentsPath, {});
+  res.json({ comments: comments[req.params.id] || [] });
+});
+
+app.post("/api/videos/:id/like", requireAge, likeLimiter, (req, res) => {
+  if (!getVideo(req.params.id)) return res.status(404).json({ error: "Video not found." });
+  const visitorId = getVisitorId(req, res);
+  const likes = readStore(likesPath, {});
+  const likeBucket = likes[req.params.id] || {};
+  const liked = req.body?.liked === true;
+
+  if (liked) likeBucket[visitorId] = true;
+  else delete likeBucket[visitorId];
+
+  likes[req.params.id] = likeBucket;
+  writeStore(likesPath, likes);
+  res.json({ liked, likeCount: Object.keys(likeBucket).length });
+});
+
+app.post("/api/videos/:id/comments", requireAge, commentLimiter, (req, res) => {
+  if (!getVideo(req.params.id)) return res.status(404).json({ error: "Video not found." });
+  const username = String(req.body?.username || "").trim();
+  const text = String(req.body?.text || "").trim();
+  if (username.length < 1 || username.length > 32) {
+    return res.status(400).json({ error: "Username must be 1–32 characters." });
+  }
+  if (text.length < 1 || text.length > 500) {
+    return res.status(400).json({ error: "Comment must be 1–500 characters." });
+  }
+
+  const comments = readStore(commentsPath, {});
+  const comment = {
+    id: crypto.randomBytes(16).toString("hex"),
+    username,
+    text,
+    createdAt: new Date().toISOString()
+  };
+  comments[req.params.id] = [...(comments[req.params.id] || []), comment].slice(-200);
+  writeStore(commentsPath, comments);
+  res.status(201).json({ comment });
 });
 
 app.post("/api/admin/login", loginLimiter, (req, res) => {
