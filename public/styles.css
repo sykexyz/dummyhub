@@ -98,12 +98,34 @@ em { color: var(--red); font-style: normal; }
 .video-frame { aspect-ratio: 16/10; border: 6px solid #030303; border-radius: 19px; position: relative; overflow: hidden; background: linear-gradient(140deg, #52151d, #1a080b 54%, #080808); box-shadow: 0 16px 34px rgba(0,0,0,.35); }
 .video-frame::before { content: ""; position: absolute; inset: 0; background: radial-gradient(circle at 75% 27%, rgba(255,73,82,.82), transparent 18%), linear-gradient(120deg, transparent 33%, rgba(255,255,255,.08) 34%, transparent 35%); }
 .video-frame::after { content: ""; position: absolute; width: 150px; height: 150px; border: 1px solid rgba(255,255,255,.18); border-radius: 50%; right: -35px; bottom: -55px; }
+.video-preview { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: #000; z-index: 0; }
 .video-play { position: absolute; z-index: 1; left: 20px; bottom: 18px; width: 42px; height: 42px; border-radius: 50%; background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.28); display: grid; place-items: center; backdrop-filter: blur(10px); }
 .video-play svg { width: 15px; margin-left: 2px; }
 .video-tag { position: absolute; z-index: 1; top: 14px; right: 14px; padding: 6px 9px; border-radius: 99px; background: rgba(0,0,0,.45); color: #ffd7d8; font: 500 9px "DM Mono", monospace; text-transform: uppercase; letter-spacing: .08em; }
 .video-title { font-size: 16px; margin: 14px 2px 6px; letter-spacing: -.035em; }
 .video-description { color: #817b7c; font-size: 12px; line-height: 1.5; margin: 0 2px; }
 .video-details { display: flex; justify-content: space-between; margin: 12px 2px 0; color: #696364; font: 10px "DM Mono", monospace; text-transform: uppercase; }
+.video-actions { display: flex; gap: 8px; margin-top: 15px; }
+.action-button { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--line); border-radius: 999px; color: #aaa3a4; background: rgba(255,255,255,.035); padding: 8px 11px; cursor: pointer; font-size: 10px; transition: .2s ease; }
+.action-button:hover { color: #fff; border-color: rgba(255,70,80,.5); background: var(--red-soft); }
+.action-button svg { width: 14px; height: 14px; }
+.action-button b { color: #eee; font: 500 10px "DM Mono", monospace; }
+.like-button.liked { color: var(--red-bright); border-color: rgba(255,70,80,.5); background: var(--red-soft); }
+.like-button.liked svg { fill: currentColor; }
+.comments-panel { margin-top: 12px; padding: 14px; border: 1px solid var(--line); background: rgba(0,0,0,.2); border-radius: 16px; }
+.comments-header { display: flex; justify-content: space-between; align-items: center; gap: 10px; color: #ddd6d7; font-size: 11px; font-weight: 700; }
+.comments-header small { color: #777071; font-size: 9px; font-weight: 500; }
+.comment-list { display: grid; gap: 10px; max-height: 240px; overflow-y: auto; margin: 14px 0; }
+.comment-item { padding: 10px; border-radius: 11px; background: rgba(255,255,255,.045); }
+.comment-item strong { color: #ffb7ba; font-size: 11px; }
+.comment-item p { color: #c2bbbc; font-size: 11px; line-height: 1.5; margin: 4px 0; overflow-wrap: anywhere; }
+.comment-item small, .comment-empty { color: #777071; font-size: 10px; }
+.comment-empty { text-align: center; margin: 12px 0; }
+.comment-form { display: grid; gap: 8px; }
+.comment-form input, .comment-form textarea { padding: 10px 11px; font-size: 11px; }
+.comment-form .button { justify-self: start; min-height: 34px; }
+.comment-message { margin-top: 10px; font-size: 10px; }
+.notice[data-kind="success"] { color: #c9f3dc; background: rgba(48, 174, 110, .12); border-color: rgba(76, 205, 139, .32); }
 .empty-state { text-align: center; padding: 48px 24px; border-radius: var(--radius); }
 .empty-icon { width: 52px; height: 52px; display: grid; place-items: center; border-radius: 17px; background: var(--red-soft); color: var(--red-bright); margin: 0 auto 20px; }
 .empty-icon svg { width: 25px; }
