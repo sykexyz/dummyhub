@@ -1,4 +1,9 @@
-require("dotenv").config();
+try {
+  require("dotenv").config();
+} catch (error) {
+  if (error.code !== "MODULE_NOT_FOUND") throw error;
+  console.warn("dotenv is not installed; using platform-provided environment variables.");
+}
 
 const express = require("express");
 const helmet = require("helmet");
