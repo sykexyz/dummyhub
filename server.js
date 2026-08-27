@@ -130,7 +130,9 @@ const upload = multer({
   limits: { fileSize: 500 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     if (!allowedMimeTypes.has(file.mimetype)) {
-      return cb(new Error("Only MP4, WebM, and QuickTime video files are accepted."));
+      const error = new Error("Only MP4, WebM, and QuickTime video files are accepted.");
+      error.code = "INVALID_FILE_TYPE";
+      return cb(error);
     }
     cb(null, true);
   }
@@ -185,7 +187,12 @@ function publicVideo(video, visitorId, likes, comments) {
 function readCookie(req, name) {
   const cookieHeader = req.headers.cookie || "";
   const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${name}=([^;]*)`));
-  return match ? decodeURIComponent(match[1]) : null;
+  if (!match) return null;
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return null;
+  }
 }
 
 function getVisitorId(req, res) {
@@ -241,6 +248,10 @@ app.post("/api/age-gate", (req, res) => {
     secure: isProduction,
     maxAge: 1000 * 60 * 60 * 24
   });
+  res.json({ ok: true });
+});
+
+app.get("/health", (_req, res) => {
   res.json({ ok: true });
 });
 
@@ -321,7 +332,11 @@ app.post("/api/admin/login", loginLimiter, (req, res) => {
 });
 
 app.post("/api/admin/logout", (req, res) => {
-  req.session.destroy(() => res.json({ ok: true }));
+  req.session.destroy((error) => {
+    if (error) return res.status(500).json({ error: "Could not log out." });
+    res.clearCookie("dummyhub_admin");
+    res.json({ ok: true });
+  });
 });
 
 app.get("/api/admin/session", (req, res) => {
@@ -385,8 +400,14 @@ app.get("/", (_req, res) => {
 app.use(express.static(publicDir, { extensions: ["html"] }));
 
 app.use((err, _req, res, _next) => {
-  if (err instanceof multer.MulterError || err?.message) {
-    return res.status(400).json({ error: err.message || "Upload failed." });
+  if (err instanceof multer.MulterError) {
+    const message = err.code === "LIMIT_FILE_SIZE"
+      ? "Video files must be 500 MB or smaller."
+      : err.message || "Upload failed.";
+    return res.status(400).json({ error: message });
+  }
+  if (err?.code === "INVALID_FILE_TYPE") {
+    return res.status(400).json({ error: err.message });
   }
   console.error(err);
   res.status(500).json({ error: "Something went wrong." });
