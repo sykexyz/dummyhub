@@ -63,7 +63,7 @@ document.getElementById("app").innerHTML = `
           <p class="legal-note">Only upload content you own or are authorized to publish. Every production should document adult age verification, identity, consent, and lawful distribution before it goes live.</p>
           <div class="social-links">
             <a href="#" class="social-link" aria-label="Facebook — Kyle Gaspari"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 8h2.2V4.6c-.38-.05-1.7-.16-3.23-.16-3.2 0-5.4 1.95-5.4 5.55V13H4v3.8h3.57V24H12v-7.2h3.44L16 13h-4V10.4c0-1.1.3-2.4 2-2.4Z" fill="currentColor"/></svg><span>Kyle Gaspari</span></a>
-            <a href="#" class="social-link" aria-label="Telegram — cozybalenciaga"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21.7 4.35-3.03 14.28c-.23 1.01-.83 1.26-1.68.79l-4.63-3.41-2.23 2.15c-.25.25-.46.46-.94.46l.34-4.72 8.6-7.77c.37-.34-.08-.53-.57-.19L7 12.55l-4.57-1.43c-1-.31-1.02-1 .21-1.47L20.5 3.2c.85-.31 1.6.2 1.2 1.15Z" fill="currentColor"/></svg><span>@cozybalenciaga</span></a>
+            <a href="https://t.me/cozybalenciaga" class="social-link" aria-label="Telegram — cozybalenciaga"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21.7 4.35-3.03 14.28c-.23 1.01-.83 1.26-1.68.79l-4.63-3.41-2.23 2.15c-.25.25-.46.46-.94.46l.34-4.72 8.6-7.77c.37-.34-.08-.53-.57-.19L7 12.55l-4.57-1.43c-1-.31-1.02-1 .21-1.47L20.5 3.2c.85-.31 1.6.2 1.2 1.15Z" fill="currentColor"/></svg><span>@cozybalenciaga</span></a>
           </div>
         </div>
       </div>
