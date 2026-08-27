@@ -231,6 +231,12 @@ app.get("/media/:id", requireAge, (req, res) => {
   res.sendFile(filePath, { headers: { "Content-Type": video.mimeType || "video/mp4" } });
 });
 
+app.get("/", (_req, res) => {
+  res.sendFile(path.join(publicDir, "site.txt"), {
+    headers: { "Content-Type": "text/html; charset=utf-8" }
+  });
+});
+
 app.use(express.static(publicDir, { extensions: ["html"] }));
 
 app.use((err, _req, res, _next) => {
