@@ -1,6 +1,6 @@
 # DUMMY HUB
 
-A small, age-gated creator video hub with a red/black glassmorphism interface and a server-backed admin upload flow.
+A small, age-gated creator video hub with a red/black glassmorphism interface, anonymous likes, visitor comments, and a server-backed admin upload flow.
 
 ## Run locally
 
@@ -23,6 +23,12 @@ Set these as environment variables or hosting secrets. They are intentionally **
 - `NODE_ENV=production` — enables secure cookies behind HTTPS.
 
 The supplied admin password should be entered into the deployment's secret manager, never into `src`, HTML, JavaScript, Git, or a chat message.
+
+## Likes and visitor comments
+
+Visitors can like or unlike a video without creating an account. A private random visitor cookie prevents repeated likes from the same browser from inflating the count; it is not an identity system.
+
+Visitors can also comment with only a display username and message—no account or ID is required. Usernames are limited to 32 characters, comments to 500 characters, and posting is rate-limited. Comments are stored in `data/comments.json`; likes are stored in `data/likes.json`. Back up and protect the `data/` directory in production, and add moderation/reporting tools before opening comments publicly.
 
 ## Media access notes
 
