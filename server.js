@@ -23,12 +23,16 @@ if (isProduction && !process.env.SESSION_SECRET) {
 const publicDir = path.join(__dirname, "public");
 const dataDir = path.join(__dirname, "data");
 const uploadDir = path.join(__dirname, "uploads");
+const chunkDir = path.join(uploadDir, ".chunks");
 const videoIndexPath = path.join(dataDir, "videos.json");
 const likesPath = path.join(dataDir, "likes.json");
 const commentsPath = path.join(dataDir, "comments.json");
+const MAX_VIDEO_SIZE = 500 * 1024 * 1024;
+const UPLOAD_CHUNK_SIZE = 8 * 1024 * 1024;
 
 fs.mkdirSync(dataDir, { recursive: true });
 fs.mkdirSync(uploadDir, { recursive: true });
+fs.mkdirSync(chunkDir, { recursive: true });
 if (!fs.existsSync(videoIndexPath)) fs.writeFileSync(videoIndexPath, "[]");
 if (!fs.existsSync(likesPath)) fs.writeFileSync(likesPath, "{}");
 if (!fs.existsSync(commentsPath)) fs.writeFileSync(commentsPath, "{}");
@@ -98,6 +102,7 @@ const commentLimiter = rateLimit({
 
 const allowedMimeTypes = new Set(["video/mp4", "video/webm", "video/quicktime"]);
 const demoVideos = [];
+const activeUploads = new Map();
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, uploadDir),
   filename: (_req, file, cb) => {
@@ -107,7 +112,7 @@ const storage = multer.diskStorage({
 });
 const upload = multer({
   storage,
-  limits: { fileSize: 500 * 1024 * 1024 },
+  limits: { fileSize: MAX_VIDEO_SIZE },
   fileFilter: (_req, file, cb) => {
     if (!allowedMimeTypes.has(file.mimetype)) {
       const error = new Error("Only MP4, WebM, and QuickTime video files are accepted.");
@@ -117,6 +122,60 @@ const upload = multer({
     cb(null, true);
   }
 });
+const chunkStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, chunkDir),
+  filename: (_req, _file, cb) => cb(null, `${crypto.randomBytes(18).toString("hex")}.part`)
+});
+const chunkUpload = multer({
+  storage: chunkStorage,
+  limits: { fileSize: UPLOAD_CHUNK_SIZE + 1024 * 1024 }
+});
+
+function removeUploadFile(filePath) {
+  if (filePath) fs.rmSync(filePath, { force: true });
+}
+
+function cleanupUpload(uploadId) {
+  const uploadState = activeUploads.get(uploadId);
+  if (!uploadState) return;
+  removeUploadFile(uploadState.tempPath);
+  activeUploads.delete(uploadId);
+}
+
+function metadataFromRequest(body) {
+  const title = String(body?.title || "").trim();
+  if (!title || title.length > 120) {
+    return { error: "A title between 1 and 120 characters is required." };
+  }
+  const description = String(body?.description || "").trim().slice(0, 280);
+  const category = String(body?.category || "Featured").trim().slice(0, 40) || "Featured";
+  return { title, description, category };
+}
+
+function extensionForUpload(fileName, mimeType) {
+  const extension = path.extname(String(fileName || "")).toLowerCase();
+  if ([".mp4", ".webm", ".mov"].includes(extension)) return extension;
+  return mimeType === "video/webm" ? ".webm" : mimeType === "video/quicktime" ? ".mov" : ".mp4";
+}
+
+function createVideoRecord(uploadState, fileName) {
+  return {
+    id: crypto.randomBytes(16).toString("hex"),
+    title: uploadState.title,
+    description: uploadState.description,
+    category: uploadState.category,
+    fileName,
+    mimeType: uploadState.mimeType,
+    createdAt: new Date().toISOString()
+  };
+}
+
+setInterval(() => {
+  const expiry = Date.now() - 60 * 60 * 1000;
+  for (const [uploadId, uploadState] of activeUploads) {
+    if (uploadState.updatedAt < expiry) cleanupUpload(uploadId);
+  }
+}, 15 * 60 * 1000).unref();
 
 function readVideos() {
   try {
@@ -349,19 +408,125 @@ app.delete("/api/admin/videos/:id", requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
+app.post("/api/admin/upload/init", requireAdmin, (req, res) => {
+  const metadata = metadataFromRequest(req.body);
+  if (metadata.error) return res.status(400).json({ error: metadata.error });
+
+  const fileSize = Number(req.body?.fileSize);
+  const mimeType = String(req.body?.mimeType || "");
+  if (!Number.isSafeInteger(fileSize) || fileSize < 1 || fileSize > MAX_VIDEO_SIZE) {
+    return res.status(400).json({ error: "Video files must be between 1 byte and 500 MB." });
+  }
+  if (!allowedMimeTypes.has(mimeType)) {
+    return res.status(400).json({ error: "Only MP4, WebM, and QuickTime video files are accepted." });
+  }
+
+  const uploadId = crypto.randomBytes(24).toString("hex");
+  const totalChunks = Math.ceil(fileSize / UPLOAD_CHUNK_SIZE);
+  const tempPath = path.join(chunkDir, `${uploadId}.upload`);
+  fs.writeFileSync(tempPath, "");
+  activeUploads.set(uploadId, {
+    ...metadata,
+    fileName: String(req.body?.fileName || ""),
+    mimeType,
+    fileSize,
+    totalChunks,
+    nextChunk: 0,
+    receivedBytes: 0,
+    tempPath,
+    updatedAt: Date.now()
+  });
+  res.status(201).json({ uploadId, chunkSize: UPLOAD_CHUNK_SIZE, totalChunks });
+});
+
+app.post("/api/admin/upload/chunk", requireAdmin, chunkUpload.single("chunk"), (req, res) => {
+  const uploadId = String(req.body?.uploadId || "");
+  const uploadState = activeUploads.get(uploadId);
+  if (!uploadState) {
+    removeUploadFile(req.file?.path);
+    return res.status(404).json({ error: "Upload session expired. Please start again." });
+  }
+  if (!req.file) return res.status(400).json({ error: "Upload chunk is missing." });
+
+  const chunkIndex = Number(req.body?.chunkIndex);
+  if (!Number.isSafeInteger(chunkIndex) || chunkIndex < 0 || chunkIndex >= uploadState.totalChunks) {
+    removeUploadFile(req.file.path);
+    return res.status(400).json({ error: "Invalid upload chunk." });
+  }
+  uploadState.updatedAt = Date.now();
+
+  // A retry after a lost response is safe and does not append the same bytes twice.
+  if (chunkIndex < uploadState.nextChunk) {
+    removeUploadFile(req.file.path);
+    return res.json({ ok: true, nextChunk: uploadState.nextChunk, receivedBytes: uploadState.receivedBytes });
+  }
+  if (chunkIndex > uploadState.nextChunk) {
+    removeUploadFile(req.file.path);
+    return res.status(409).json({ error: "Upload chunks must arrive in order.", nextChunk: uploadState.nextChunk });
+  }
+  const isLastChunk = chunkIndex === uploadState.totalChunks - 1;
+  const expectedChunkSize = isLastChunk
+    ? uploadState.fileSize - (uploadState.totalChunks - 1) * UPLOAD_CHUNK_SIZE
+    : UPLOAD_CHUNK_SIZE;
+  if (req.file.size !== expectedChunkSize || uploadState.receivedBytes + req.file.size > uploadState.fileSize) {
+    removeUploadFile(req.file.path);
+    return res.status(400).json({ error: "Upload chunk size is invalid." });
+  }
+
+  try {
+    fs.appendFileSync(uploadState.tempPath, fs.readFileSync(req.file.path));
+    uploadState.receivedBytes += req.file.size;
+    uploadState.nextChunk += 1;
+    res.json({
+      ok: true,
+      nextChunk: uploadState.nextChunk,
+      receivedBytes: uploadState.receivedBytes
+    });
+  } finally {
+    removeUploadFile(req.file.path);
+  }
+});
+
+app.delete("/api/admin/upload/:uploadId", requireAdmin, (req, res) => {
+  cleanupUpload(req.params.uploadId);
+  res.json({ ok: true });
+});
+
+app.post("/api/admin/upload/complete", requireAdmin, (req, res) => {
+  const uploadId = String(req.body?.uploadId || "");
+  const uploadState = activeUploads.get(uploadId);
+  if (!uploadState) return res.status(404).json({ error: "Upload session expired. Please start again." });
+  if (uploadState.nextChunk !== uploadState.totalChunks || uploadState.receivedBytes !== uploadState.fileSize) {
+    return res.status(409).json({ error: "The video upload is incomplete." });
+  }
+
+  const fileName = `${crypto.randomBytes(18).toString("hex")}${extensionForUpload(uploadState.fileName, uploadState.mimeType)}`;
+  const finalPath = path.join(uploadDir, fileName);
+  try {
+    fs.renameSync(uploadState.tempPath, finalPath);
+    const videos = readVideos();
+    const video = createVideoRecord(uploadState, fileName);
+    videos.unshift(video);
+    writeVideos(videos);
+    activeUploads.delete(uploadId);
+    res.status(201).json({ video: publicVideo(video) });
+  } catch (error) {
+    removeUploadFile(finalPath);
+    throw error;
+  }
+});
+
 app.post("/api/admin/upload", requireAdmin, upload.single("video"), (req, res) => {
   if (!req.file) return res.status(400).json({ error: "Choose a video file to upload." });
-  const title = String(req.body.title || "").trim();
-  if (!title || title.length > 120) {
+  const metadata = metadataFromRequest(req.body);
+  if (metadata.error) {
     fs.unlinkSync(req.file.path);
-    return res.status(400).json({ error: "A title between 1 and 120 characters is required." });
+    return res.status(400).json({ error: metadata.error });
   }
 
   const video = {
     id: crypto.randomBytes(16).toString("hex"),
-    title,
-    description: String(req.body.description || "").trim().slice(0, 280),
-    category: String(req.body.category || "Featured").trim().slice(0, 40) || "Featured",
+    ...metadata,
     fileName: req.file.filename,
     mimeType: req.file.mimetype,
     createdAt: new Date().toISOString()
