@@ -1,50 +1,48 @@
 # DUMMY HUB
 
-A small, age-gated creator video hub with a red/black glassmorphism interface, anonymous likes, visitor comments, and a server-backed admin upload flow.
+DUMMY HUB is a small, legal-first, age-gated video publishing MVP for Railway.
 
-## Run locally
+## What is included
 
-```bash
-npm install
-cp .env.example .env
-# Set ADMIN_PASSWORD and SESSION_SECRET in .env
-npm start
-```
+- A blocking 18+ confirmation screen with an exit path for underage visitors.
+- A left slide-out navigation on mobile and fixed glass sidebar on larger screens.
+- Separate Dummy Hub, Categories, About, and Admin Studio views (no category sections stacked on one long scroll).
+- Black and semi-orange liquid glass visual system with inline SVG icons.
+- Admin-only uploads for MP4, WebM, and MOV files up to 500 MB.
+- Server-side admin authentication, rate limiting, Helmet headers, private media response headers, and path traversal protection.
+- The public video API exposes a generated media route only; it never returns the internal upload filename.
 
-Open `http://localhost:3000`.
+## Local setup
 
-## Configuration
+1. Install Node.js 18 or newer.
+2. Copy .env.example to .env.
+3. Set ADMIN_PASSWORD and a long random SESSION_SECRET in .env.
+4. Run npm install.
+5. Run npm start and open http://localhost:3000.
 
-Set these as environment variables or hosting secrets. They are intentionally **not** hard-coded into the frontend or committed to the repository:
+Never commit .env, passwords, database URLs, OAuth tokens, or uploaded media. A private repository is not a substitute for secret management.
 
-- `ADMIN_USERNAME` — defaults to `kyle` if omitted.
-- `ADMIN_PASSWORD` — required to enable admin login.
-- `SESSION_SECRET` — use a long random value in production.
-- `NODE_ENV=production` — enables secure cookies behind HTTPS.
+## Railway setup
 
-The supplied admin password should be entered into the deployment's secret manager, never into `src`, HTML, JavaScript, Git, or a chat message.
+Set these as Railway environment variables/secrets:
 
-## Likes and visitor comments
+- ADMIN_USERNAME (default is kyle if omitted)
+- ADMIN_PASSWORD (required for admin uploads)
+- SESSION_SECRET (required in production)
+- NODE_ENV=production
+- PORT (Railway normally supplies this automatically)
 
-Visitors can like or unlike a video without creating an account. A private random visitor cookie prevents repeated likes from the same browser from inflating the count; it is not an identity system.
+The current MVP uses local data and uploads folders. Railway filesystems can be ephemeral, so production publishing should move the catalog to PostgreSQL and the media files to a private object-storage bucket with signed delivery. Do not paste a database connection string into source code; add it through Railway's secret manager when the persistence layer is wired.
 
-Visitors can also comment with only a display username and message—no account or ID is required. Usernames are limited to 32 characters, comments to 500 characters, and posting is rate-limited. Comments are stored in `data/comments.json`; likes are stored in `data/likes.json`. Back up and protect the `data/` directory in production, and add moderation/reporting tools before opening comments publicly.
+## Legal and safety checklist
 
-## Media access notes
+This interface is not legal advice and an age button alone may not satisfy every jurisdiction. Before publishing real adult content, confirm with qualified local counsel and implement the requirements that apply to the operator and audience, including:
 
-Uploaded media is stored outside the public static directory and is served through opaque IDs after the age-confirmation cookie is present. Responses use private/no-store cache headers, `nosniff`, and no directory listing. Uploads are limited to MP4, WebM, and MOV files up to 500 MB.
+- verified adult performers and documented consent/release records;
+- copyright and distribution rights for each upload;
+- reporting, moderation, complaint, and prompt takedown workflows;
+- privacy policy, terms, retention, and access controls;
+- required age assurance and records where applicable;
+- payment, tax, advertising, and platform policies.
 
-This is not DRM. A browser must receive playable media, so a determined visitor can still capture a screen or inspect a network request. `controlsList="nodownload"` is only a UI deterrent. For stronger protection, add a real streaming/DRM provider, short-lived signed URLs, per-viewer watermarking, abuse monitoring, and an authenticated creator/viewer model.
-
-## Legal and trust checklist before publishing
-
-An age gate is only one layer and is not a universal legal compliance solution. Before accepting real uploads or making the site public, verify the laws and platform rules that apply to the operator, creators, and viewers:
-
-- Document verified age and identity for every performer, and retain consent and release records.
-- Build moderation, reporting, takedown, and repeat-infringer processes before launch.
-- Publish Terms of Use, Privacy Policy, content rules, and a copyright/DMCA contact process.
-- Never publish content without explicit consent and the rights to distribute it.
-- Restrict access according to the jurisdictions where the site is available; consult a qualified local lawyer for the exact requirements.
-- Protect upload records and personal data with encrypted storage, access logs, retention limits, and backups.
-
-The UI's social links are placeholders (`href="#"`) until the owner's public profiles are supplied.
+The protected media route reduces casual URL exposure, but no web application can guarantee DRM, prevent screen recording, or stop a determined viewer from capturing content. Use a real DRM-capable video service if your business requirements demand it.
