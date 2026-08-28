@@ -28,6 +28,58 @@ const ageGate = $("#age-gate");
 const siteShell = $("#site-shell");
 function escapeHtml(value) { return String(value ?? "").replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[character])); }
 function showNotice(element, message, kind = "error") { element.textContent = message; element.classList.remove("hidden"); element.dataset.kind = kind; }
+const uploadProgress = document.createElement("div");
+uploadProgress.className = "upload-progress hidden";
+uploadProgress.setAttribute("role", "status");
+uploadProgress.setAttribute("aria-live", "polite");
+uploadProgress.innerHTML = '<div class="upload-progress-top"><span class="upload-progress-label">Preparing upload…</span><span class="upload-progress-value">0%</span></div><div class="upload-progress-track"><span class="upload-progress-bar"></span></div>';
+$("#upload-message").after(uploadProgress);
+const uploadProgressLabel = $(".upload-progress-label", uploadProgress);
+const uploadProgressValue = $(".upload-progress-value", uploadProgress);
+const uploadProgressBar = $(".upload-progress-bar", uploadProgress);
+function setUploadProgress(percent, label) {
+  const rounded = Math.max(0, Math.min(100, Math.round(percent)));
+  uploadProgressLabel.textContent = label;
+  uploadProgressValue.textContent = rounded + "%";
+  uploadProgressBar.style.width = rounded + "%";
+  uploadProgress.classList.remove("hidden");
+}
+function uploadChunkRequest(uploadId, chunkIndex, totalChunks, blob) {
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open("POST", "/api/admin/upload/chunk");
+    request.timeout = 120000;
+    request.upload.onprogress = (event) => {
+      if (!event.lengthComputable) return;
+      const progress = ((chunkIndex + event.loaded / event.total) / totalChunks) * 100;
+      setUploadProgress(progress, "Uploading part " + (chunkIndex + 1) + " of " + totalChunks);
+    };
+    request.onload = () => {
+      let data;
+      try { data = JSON.parse(request.responseText || "{}"); } catch { data = {}; }
+      if (request.status >= 200 && request.status < 300) return resolve(data);
+      reject(new Error(data.error || "A video part could not be uploaded."));
+    };
+    request.onerror = () => reject(new Error("Network error while uploading. Check your connection and try again."));
+    request.ontimeout = () => reject(new Error("A video part took too long to upload. Please try again."));
+    const body = new FormData();
+    body.append("uploadId", uploadId);
+    body.append("chunkIndex", String(chunkIndex));
+    body.append("chunk", blob, "video-part");
+    request.send(body);
+  });
+}
+async function uploadChunkWithRetry(uploadId, chunkIndex, totalChunks, blob) {
+  let lastError;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try { return await uploadChunkRequest(uploadId, chunkIndex, totalChunks, blob); }
+    catch (error) {
+      lastError = error;
+      if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, attempt * 700));
+    }
+  }
+  throw lastError;
+}
 function filteredVideos() { return state.category === "all" ? state.videos : state.videos.filter((video) => video.category === state.category); }
 
 async function enterSite() { const response = await fetch("/api/age-gate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ isAdult: true }) }); if (!response.ok) throw new Error("Age confirmation could not be saved."); ageGate.classList.add("hidden"); siteShell.classList.remove("hidden"); await loadVideos(); routeView(); }
@@ -62,6 +114,59 @@ $("#open-menu").addEventListener("click", openDrawer); $("#close-menu").addEvent
 $$('.category-pill').forEach((button) => button.addEventListener("click", () => { state.category = button.dataset.category; $$('.category-pill').forEach((item) => item.classList.toggle("active", item === button)); renderAll(); }));
 $("#login-form").addEventListener("submit", async (event) => { event.preventDefault(); const form = event.currentTarget; const button = $("button[type=submit]", form); button.disabled = true; try { const response = await fetch("/api/admin/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(Object.fromEntries(new FormData(form))) }); const data = await response.json(); if (!response.ok) throw new Error(data.error || "Login failed."); form.reset(); setAdminView(true); showNotice($("#login-message"), "Logged in.", "success"); } catch (error) { showNotice($("#login-message"), error.message); } finally { button.disabled = false; } });
 $("#logout-button").addEventListener("click", async () => { await fetch("/api/admin/logout", { method: "POST" }); setAdminView(false); });
-$("#upload-form").addEventListener("submit", async (event) => { event.preventDefault(); const form = event.currentTarget; const button = $("button[type=submit]", form); button.disabled = true; try { const response = await fetch("/api/admin/upload", { method: "POST", body: new FormData(form) }); const data = await response.json(); if (!response.ok) throw new Error(data.error || "Upload failed."); showNotice($("#upload-message"), "Published.", "success"); form.reset(); state.videos.unshift(data.video); renderAll(); await loadAdminVideos(); } catch (error) { showNotice($("#upload-message"), error.message); } finally { button.disabled = false; } });
+$("#upload-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const button = $("button[type=submit]", form);
+  const formData = new FormData(form);
+  const file = formData.get("video");
+  let uploadId = null;
+  button.disabled = true;
+  try {
+    if (!(file instanceof File) || !file.size) throw new Error("Choose a video file to upload.");
+    setUploadProgress(0, "Preparing upload…");
+    const initResponse = await fetch("/api/admin/upload/init", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: formData.get("title"),
+        description: formData.get("description"),
+        category: formData.get("category"),
+        fileName: file.name,
+        fileSize: file.size,
+        mimeType: file.type
+      })
+    });
+    const initData = await initResponse.json();
+    if (!initResponse.ok) throw new Error(initData.error || "Upload could not be started.");
+    uploadId = initData.uploadId;
+    const chunkSize = Number(initData.chunkSize);
+    const totalChunks = Number(initData.totalChunks);
+    for (let index = 0; index < totalChunks; index += 1) {
+      const start = index * chunkSize;
+      const chunk = file.slice(start, Math.min(start + chunkSize, file.size), file.type);
+      await uploadChunkWithRetry(uploadId, index, totalChunks, chunk);
+      setUploadProgress(((index + 1) / totalChunks) * 100, index + 1 === totalChunks ? "Finishing upload…" : "Uploading part " + (index + 1) + " of " + totalChunks);
+    }
+    const completeResponse = await fetch("/api/admin/upload/complete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ uploadId })
+    });
+    const data = await completeResponse.json();
+    if (!completeResponse.ok) throw new Error(data.error || "Upload could not be completed.");
+    showNotice($("#upload-message"), "Published.", "success");
+    form.reset();
+    state.videos.unshift(data.video);
+    renderAll();
+    await loadAdminVideos();
+  } catch (error) {
+    if (uploadId) fetch("/api/admin/upload/" + encodeURIComponent(uploadId), { method: "DELETE" }).catch(() => {});
+    showNotice($("#upload-message"), error.message || "Upload failed.");
+  } finally {
+    button.disabled = false;
+    uploadProgress.classList.add("hidden");
+  }
+});
 $("#year").textContent = new Date().getFullYear();
 checkAdminSession().catch(() => setAdminView(false));
