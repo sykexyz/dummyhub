@@ -97,35 +97,7 @@ const commentLimiter = rateLimit({
 });
 
 const allowedMimeTypes = new Set(["video/mp4", "video/webm", "video/quicktime"]);
-const demoVideos = [
-  {
-    id: "demo-neon-after-hours",
-    title: "Neon After Hours",
-    description: "A demo listing showing how a published title appears in the hub.",
-    category: "Featured",
-    duration: "Demo",
-    createdAt: "2026-01-01T00:00:00.000Z",
-    demo: true
-  },
-  {
-    id: "demo-red-room-sessions",
-    title: "Red Room Sessions",
-    description: "A visual placeholder for your next creator upload.",
-    category: "Originals",
-    duration: "Demo",
-    createdAt: "2026-01-02T00:00:00.000Z",
-    demo: true
-  },
-  {
-    id: "demo-late-night-original",
-    title: "Late Night Original",
-    description: "Replace demo listings with content you have the rights to publish.",
-    category: "New",
-    duration: "Demo",
-    createdAt: "2026-01-03T00:00:00.000Z",
-    demo: true
-  }
-];
+const demoVideos = [];
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, uploadDir),
   filename: (_req, file, cb) => {
@@ -175,8 +147,8 @@ function writeStore(storePath, value) {
 }
 
 function publicVideo(video, visitorId, likes, comments) {
-  const likeBucket = likes[video.id] || {};
-  const commentList = comments[video.id] || [];
+  const likeBucket = (likes || {})[video.id] || {};
+  const commentList = (comments || {})[video.id] || [];
   return {
     id: video.id,
     title: video.title,
@@ -352,7 +324,29 @@ app.get("/api/admin/session", (req, res) => {
 });
 
 app.get("/api/admin/videos", requireAdmin, (_req, res) => {
-  res.json({ videos: readVideos().map(publicVideo) });
+  res.json({ videos: readVideos().map((video) => publicVideo(video, null, {}, {})) });
+});
+
+app.delete("/api/admin/videos/:id", requireAdmin, (req, res) => {
+  const videos = readVideos();
+  const index = videos.findIndex((video) => video.id === req.params.id);
+  if (index === -1) return res.status(404).json({ error: "Video not found." });
+
+  const [video] = videos.splice(index, 1);
+  writeVideos(videos);
+
+  if (video.fileName) {
+    const safeFileName = path.basename(video.fileName);
+    if (safeFileName === video.fileName) fs.rmSync(path.join(uploadDir, safeFileName), { force: true });
+  }
+
+  const likes = readStore(likesPath, {});
+  const comments = readStore(commentsPath, {});
+  delete likes[video.id];
+  delete comments[video.id];
+  writeStore(likesPath, likes);
+  writeStore(commentsPath, comments);
+  res.json({ ok: true });
 });
 
 app.post("/api/admin/upload", requireAdmin, upload.single("video"), (req, res) => {
