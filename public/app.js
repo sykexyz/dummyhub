@@ -63,7 +63,8 @@ function uploadChunkRequest(uploadId, chunkIndex, totalChunks, blob) {
   return new Promise((resolve, reject) => {
     const request = new XMLHttpRequest();
     request.open("POST", "/api/admin/upload/chunk");
-    request.timeout = 120000;
+    // Let a slow but active connection finish instead of failing on a fixed timer.
+    request.timeout = 0;
     request.upload.onprogress = (event) => {
       if (!event.lengthComputable) return;
       const progress = ((chunkIndex + event.loaded / event.total) / totalChunks) * 100;
@@ -86,11 +87,18 @@ function uploadChunkRequest(uploadId, chunkIndex, totalChunks, blob) {
 }
 async function uploadChunkWithRetry(uploadId, chunkIndex, totalChunks, blob) {
   let lastError;
-  for (let attempt = 1; attempt <= 3; attempt += 1) {
+  for (let attempt = 1; attempt <= 8; attempt += 1) {
     try { return await uploadChunkRequest(uploadId, chunkIndex, totalChunks, blob); }
     catch (error) {
       lastError = error;
-      if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, attempt * 700));
+      if (attempt < 8) {
+        setUploadProgress((chunkIndex / totalChunks) * 100, "Connection interrupted — retrying part " + (chunkIndex + 1));
+        if (navigator.onLine === false) {
+          await new Promise((resolve) => window.addEventListener("online", resolve, { once: true }));
+        } else {
+          await new Promise((resolve) => setTimeout(resolve, Math.min(15000, 1000 * 2 ** (attempt - 1))));
+        }
+      }
     }
   }
   throw lastError;
