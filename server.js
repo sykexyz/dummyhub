@@ -17,6 +17,9 @@ const path = require("path");
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 const isProduction = process.env.NODE_ENV === "production";
+if (isProduction && !process.env.SESSION_SECRET) {
+  throw new Error("SESSION_SECRET must be configured in production.");
+}
 const publicDir = path.join(__dirname, "public");
 const dataDir = path.join(__dirname, "data");
 const uploadDir = path.join(__dirname, "uploads");
@@ -32,6 +35,11 @@ if (!fs.existsSync(commentsPath)) fs.writeFileSync(commentsPath, "{}");
 
 app.disable("x-powered-by");
 app.set("trust proxy", 1);
+app.use((_req, res, next) => {
+  res.setHeader("X-Robots-Tag", "noindex, nofollow, noarchive");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  next();
+});
 app.use(
   helmet({
     crossOriginResourcePolicy: { policy: "same-site" },
@@ -374,7 +382,9 @@ app.get("/media/:id", requireAge, (req, res) => {
   const video = readVideos().find((item) => item.id === req.params.id);
   if (!video?.fileName) return res.status(404).send("Video not found");
 
-  const filePath = path.join(uploadDir, video.fileName);
+  const safeFileName = path.basename(video.fileName);
+  if (safeFileName !== video.fileName) return res.status(400).send("Invalid media reference");
+  const filePath = path.join(uploadDir, safeFileName);
   if (!fs.existsSync(filePath)) return res.status(404).send("Video not found");
   res.set({
     "Cache-Control": "private, no-store",
