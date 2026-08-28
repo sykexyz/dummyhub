@@ -28,7 +28,7 @@ const videoIndexPath = path.join(dataDir, "videos.json");
 const likesPath = path.join(dataDir, "likes.json");
 const commentsPath = path.join(dataDir, "comments.json");
 const MAX_VIDEO_SIZE = 500 * 1024 * 1024;
-const UPLOAD_CHUNK_SIZE = 8 * 1024 * 1024;
+const UPLOAD_CHUNK_SIZE = 16 * 1024 * 1024;
 
 fs.mkdirSync(dataDir, { recursive: true });
 fs.mkdirSync(uploadDir, { recursive: true });
