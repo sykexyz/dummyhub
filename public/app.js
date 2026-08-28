@@ -26,6 +26,15 @@ const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
 const ageGate = $("#age-gate");
 const siteShell = $("#site-shell");
+const topBrand = document.createElement("a");
+topBrand.className = "brand top-brand";
+topBrand.href = "#home";
+topBrand.setAttribute("aria-label", "DUMMY HUB home");
+topBrand.innerHTML = "<span>DUMMY</span><strong>HUB</strong>";
+const topStatus = document.createElement("span");
+topStatus.className = "top-status";
+topStatus.setAttribute("aria-label", "Online");
+$(".content-header").append(topBrand, topStatus);
 function escapeHtml(value) { return String(value ?? "").replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[character])); }
 function showNotice(element, message, kind = "error") { element.textContent = message; element.classList.remove("hidden"); element.dataset.kind = kind; }
 const uploadProgress = document.createElement("div");
