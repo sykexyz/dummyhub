@@ -58,6 +58,11 @@ h4 { margin-bottom: 8px; font-size: 18px; font-weight: 650; }
 .button-small { min-height: 38px; padding: 0 14px; font-size: 11px; }
 .notice { margin-top: 16px; padding: 11px 13px; border: 1px solid rgba(233, 120, 47, .32); border-radius: 12px; color: #f2bd91; background: rgba(233, 120, 47, .1); font-size: 11px; line-height: 1.5; }
 .notice[data-kind="success"] { border-color: rgba(111, 195, 133, .3); color: #a9dfb6; background: rgba(111, 195, 133, .08); }
+.upload-progress { display: grid; gap: 9px; margin-top: 16px; padding: 12px 13px; border: 1px solid rgba(255, 255, 255, .1); border-radius: 12px; background: rgba(255, 255, 255, .035); }
+.upload-progress-top { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 10px; font-weight: 700; }
+.upload-progress-value { color: var(--orange-bright); }
+.upload-progress-track { height: 5px; overflow: hidden; border-radius: 999px; background: rgba(255, 255, 255, .1); }
+.upload-progress-bar { display: block; width: 0; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--orange), var(--orange-bright)); transition: width .2s ease; }
 .app-shell { display: flex; min-height: 100vh; }
 .sidebar { position: fixed; z-index: 30; top: 18px; bottom: 18px; left: 18px; display: flex; width: 238px; flex-direction: column; padding: 23px 14px 15px; border-radius: 28px; }
 .sidebar-top { display: flex; align-items: center; justify-content: space-between; padding: 0 10px; }
