@@ -129,7 +129,7 @@ h4 { margin-bottom: 8px; font-size: 18px; font-weight: 650; }
 .video-play:hover { background: #ffb574; box-shadow: 0 12px 30px rgba(233, 120, 47, .4); transform: translate(-50%, -50%) scale(1.08); }
 .video-play:disabled { color: var(--muted); background: rgba(255, 255, 255, .13); box-shadow: none; }
 .video-play svg { width: 20px; height: 20px; margin-left: 3px; }
-.video-player { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; }
+.video-player { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; -webkit-touch-callout: none; user-select: none; -webkit-user-select: none; }
 .video-card-body { padding: 16px 16px 14px; }
 .video-title { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .video-description { min-height: 34px; overflow: hidden; color: var(--muted); font-size: 11px; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
