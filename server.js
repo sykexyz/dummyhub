@@ -558,6 +558,8 @@ app.get("/", (_req, res) => {
   const shell = [
     "<!doctype html><html><head><meta charset=\"UTF-8\">",
     "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">",
+    "<link rel=\"preload\" href=\"/logo.png\" as=\"image\" fetchpriority=\"high\">",
+    "<link rel=\"icon\" type=\"image/png\" href=\"/logo.png\">",
     "<title>DUMMY HUB</title><link rel=\"stylesheet\" href=\"/styles.css\">",
     "</head><body><div class=\"ambient ambient-one\"></div>",
     "<div class=\"ambient ambient-two\"></div><div id=\"app\"></div>",
